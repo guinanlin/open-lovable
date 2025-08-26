@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createGroq } from '@ai-sdk/groq';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { FileManifest } from '@/types/file-manifest';
@@ -104,7 +103,9 @@ export async function POST(request: NextRequest) {
         aiModel = openai(model.replace('openai/', ''));
       }
     } else if (model.startsWith('google/')) {
-      aiModel = createGoogleGenerativeAI(model.replace('google/', ''));
+      // Skip Google models for now as they don't support generateObject
+      console.warn('[analyze-edit-intent] Google models not supported for generateObject, falling back to groq');
+      aiModel = groq('llama3-8b-8192');
     } else {
       // Default to groq if model format is unclear
       aiModel = groq(model);

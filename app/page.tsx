@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { appConfig } from '@/config/app.config';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import {
   SiCss3, 
   SiJson 
 } from '@/lib/icons';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import CodeApplicationProgress, { type CodeApplicationState } from '@/components/CodeApplicationProgress';
 
 interface SandboxData {
@@ -42,7 +42,15 @@ interface ChatMessage {
   };
 }
 
-export default function AISandboxPage() {
+interface GeneratedFile {
+  path: string;
+  content: string;
+  type: string;
+  completed: boolean;
+  edited?: boolean;
+}
+
+function AISandboxPageContent() {
   const [sandboxData, setSandboxData] = useState<SandboxData | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ text: 'Not connected', active: false });
@@ -64,9 +72,9 @@ export default function AISandboxPage() {
     const modelParam = searchParams.get('model');
     return appConfig.ai.availableModels.includes(modelParam || '') ? modelParam! : appConfig.ai.defaultModel;
   });
-  const [urlOverlayVisible, setUrlOverlayVisible] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlStatus, setUrlStatus] = useState<string[]>([]);
+  const [urlOverlayVisible, setUrlOverlayVisible] = useState(false);
   const [showHomeScreen, setShowHomeScreen] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['app', 'src', 'src/components']));
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -119,7 +127,7 @@ export default function AISandboxPage() {
     thinkingText?: string;
     thinkingDuration?: number;
     currentFile?: { path: string; content: string; type: string };
-    files: Array<{ path: string; content: string; type: string; completed: boolean }>;
+    files: GeneratedFile[];
     lastProcessedPosition: number;
     isEdit?: boolean;
   }>({
@@ -530,7 +538,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                   } else if (data.message.includes('Creating files') || data.message.includes('Applying')) {
                     setCodeApplicationState({ 
                       stage: 'applying',
-                      filesGenerated: results.filesCreated 
+                      filesGenerated: finalData?.results?.filesCreated || []
                     });
                   }
                   break;
@@ -691,22 +699,22 @@ Tip: I automatically detect and install npm packages from your code imports (lik
           log(data.explanation);
         }
         
-        if (data.autoCompleted) {
+        if ((data as any).autoCompleted) {
           log('Auto-generating missing components...', 'command');
           
-          if (data.autoCompletedComponents) {
+          if ((data as any).autoCompletedComponents) {
             setTimeout(() => {
               log('Auto-generated missing components:', 'info');
-              data.autoCompletedComponents.forEach((comp: string) => {
+              (data as any).autoCompletedComponents.forEach((comp: string) => {
                 log(`  ${comp}`, 'command');
               });
             }, 1000);
           }
-        } else if (data.warning) {
-          log(data.warning, 'error');
+        } else if ((data as any).warning) {
+          log((data as any).warning, 'error');
           
-          if (data.missingImports && data.missingImports.length > 0) {
-            const missingList = data.missingImports.join(', ');
+          if ((data as any).missingImports && (data as any).missingImports.length > 0) {
+            const missingList = (data as any).missingImports.join(', ');
             addChatMessage(
               `Ask me to "create the missing components: ${missingList}" to fix these import errors.`,
               'system'
@@ -716,7 +724,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
         
         log('Code applied successfully!');
         console.log('[applyGeneratedCode] Response data:', data);
-        console.log('[applyGeneratedCode] Debug info:', data.debug);
+        console.log('[applyGeneratedCode] Debug info:', (data as any).debug);
         console.log('[applyGeneratedCode] Current sandboxData:', sandboxData);
         console.log('[applyGeneratedCode] Current iframe element:', iframeRef.current);
         console.log('[applyGeneratedCode] Current iframe src:', iframeRef.current?.src);
@@ -1659,8 +1667,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                             path: filePath,
                             content: fileContent.trim(),
                             type: fileType,
-                            completed: true,
-                            edited: false
+                            completed: true
                           }];
                         }
                         
@@ -1750,7 +1757,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                   
                   // Parse all files from the completed code if not already done
                   const fileRegex = /<file path="([^"]+)">([^]*?)<\/file>/g;
-                  const parsedFiles: Array<{path: string; content: string; type: string; completed: boolean}> = [];
+                  const parsedFiles: GeneratedFile[] = [];
                   let fileMatch;
                   
                   while ((fileMatch = fileRegex.exec(data.generatedCode)) !== null) {
@@ -2197,9 +2204,9 @@ Focus on the key sections and content, making it clean and modern while preservi
                     ...prev,
                     status: `Generated ${data.name}`,
                     components: [...prev.components, { 
-                      name: data.name,
-                      path: data.path,
-                      completed: true
+                      name: data.name, 
+                      path: data.path, 
+                      completed: true 
                     }],
                     currentComponent: prev.currentComponent + 1
                   }));
@@ -2596,8 +2603,7 @@ Focus on the key sections and content, making it clean and modern.`;
                             path: filePath,
                             content: fileContent.trim(),
                             type: fileType,
-                            completed: true,
-                            edited: false
+                            completed: true
                           }];
                         }
                         
@@ -2991,7 +2997,7 @@ Focus on the key sections and content, making it clean and modern.`;
                 >
                   {appConfig.ai.availableModels.map(model => (
                     <option key={model} value={model}>
-                      {appConfig.ai.modelDisplayNames[model] || model}
+                      {(appConfig.ai.modelDisplayNames as any)[model] || model}
                     </option>
                   ))}
                 </select>
@@ -3025,11 +3031,11 @@ Focus on the key sections and content, making it clean and modern.`;
             }}
             className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#36322F] focus:border-transparent"
           >
-            {appConfig.ai.availableModels.map(model => (
-              <option key={model} value={model}>
-                {appConfig.ai.modelDisplayNames[model] || model}
-              </option>
-            ))}
+                              {appConfig.ai.availableModels.map(model => (
+                    <option key={model} value={model}>
+                      {(appConfig.ai.modelDisplayNames as any)[model] || model}
+                    </option>
+                  ))}
           </select>
           <Button 
             variant="code"
@@ -3425,5 +3431,13 @@ Focus on the key sections and content, making it clean and modern.`;
 
 
     </div>
+  );
+}
+
+export default function AISandboxPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AISandboxPageContent />
+    </Suspense>
   );
 }
